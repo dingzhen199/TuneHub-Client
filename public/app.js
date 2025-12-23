@@ -1153,6 +1153,7 @@ async function playLocalSong(id, name, artist, relativePath) {
     const queueIndex = playQueue.findIndex(song => song.platform === 'local' && song.id === id);
     if (queueIndex >= 0) {
         currentQueueIndex = queueIndex;
+        updateQueueDisplay();
     } else {
         addToQueue('local', id, name, artist);
         // 更新队列中的 path 信息
@@ -1196,7 +1197,6 @@ async function playLocalSong(id, name, artist, relativePath) {
     const playPromise = bottomAudioPlayer.play();
     if (playPromise !== undefined) {
         playPromise.catch(error => {
-            console.log('自动播放被阻止或失败:', error);
             if (playPauseBtn) {
                 playPauseBtn.textContent = '▶';
                 playPauseBtn.title = '播放 (空格)';
@@ -1246,6 +1246,7 @@ async function playSong(platform, id, name, artist) {
     const queueIndex = playQueue.findIndex(song => song.platform === platform && song.id === id);
     if (queueIndex >= 0) {
         currentQueueIndex = queueIndex;
+        updateQueueDisplay();
     } else {
         addToQueue(platform, id, name, artist);
         currentQueueIndex = playQueue.length - 1;
@@ -1310,7 +1311,6 @@ async function playSong(platform, id, name, artist) {
             const playPromise = bottomAudioPlayer.play();
             if (playPromise !== undefined) {
                 playPromise.catch(error => {
-                    console.log('自动播放被阻止或失败:', error);
                     if (playPauseBtn) {
                         playPauseBtn.textContent = '▶';
                         playPauseBtn.title = '播放 (空格)';
@@ -1776,6 +1776,27 @@ if (clearHistoryBtn) {
     // 事件委托 - 避免重复绑定事件监听器
 // 在页面加载时绑定一次，后续通过事件委托处理动态添加的元素
 document.addEventListener('DOMContentLoaded', () => {
+    // 队列列表点击事件委托（播放）
+    const queueList = document.getElementById('queue-list');
+    if (queueList) {
+        queueList.addEventListener('click', (e) => {
+            // 如果点击的是移除按钮，不处理（已有单独的事件处理）
+            if (e.target.classList.contains('remove-from-queue-btn')) {
+                return;
+            }
+            
+            const queueItem = e.target.closest('.queue-item');
+            if (queueItem) {
+                const index = parseInt(queueItem.dataset.index);
+                if (index >= 0 && index < playQueue.length) {
+                    const song = playQueue[index];
+                    // 播放选中的歌曲
+                    playSong(song.platform, song.id, song.name, song.artist);
+                }
+            }
+        });
+    }
+
     // 本地库结果事件委托
     const localResults = document.getElementById('local-results');
     if (localResults) {

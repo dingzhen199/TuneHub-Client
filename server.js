@@ -209,7 +209,6 @@ app.get('/api/proxy/pic', async (req, res) => {
           songInfo.name || '未知歌曲', 
           location
         ).then(savedPath => {
-          console.log(`专辑封面已保存: ${savedPath}`);
         }).catch(err => {
           console.error('保存专辑封面失败:', err.message);
         });
@@ -250,7 +249,6 @@ app.get('/api/proxy/pic', async (req, res) => {
             songInfo.name || '未知歌曲', 
             location
           ).then(savedPath => {
-            console.log(`专辑封面已保存: ${savedPath}`);
           }).catch(err => {
             console.error('保存专辑封面失败:', err.message);
           });
@@ -319,7 +317,6 @@ app.get('/api/proxy/lrc', async (req, res) => {
           songInfo.name || '未知歌曲', 
           lyricsText
         );
-        console.log(`歌词文件已保存: ${source}/${songInfo.artist}/${songInfo.album}/${songInfo.name}`);
       } catch (err) {
         console.error('保存歌词文件失败:', err.message);
       }
@@ -1015,5 +1012,4 @@ app.use((error, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`TuneHub Client Server running on http://localhost:${PORT}`);
 });

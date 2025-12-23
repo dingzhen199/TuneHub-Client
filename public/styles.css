@@ -825,7 +825,7 @@ button:active {
     width: 350px;
     max-height: 400px;
     overflow-y: auto;
-    background: var(--card-bg);
+    background: var(--player-bg);
     backdrop-filter: blur(20px);
     border: var(--glass-border);
     border-radius: 16px 16px 0 0;

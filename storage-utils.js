@@ -82,11 +82,8 @@ async function ensureSongCached(source, artist, album, songName, quality, audioU
     
     // 如果临时文件已存在，说明正在下载中，直接返回
     if (fileExists(tempPath)) {
-      console.log(`文件正在下载中: ${tempPath}`);
       return;
     }
-    
-    console.log(`开始后台下载歌曲: ${songName}`);
     
     // 下载文件
     const response = await axios({
@@ -102,7 +99,6 @@ async function ensureSongCached(source, artist, album, songName, quality, audioU
     
     // 下载完成后重命名
     await fs.promises.rename(tempPath, filePath);
-    console.log(`歌曲下载完成: ${filePath}`);
     
   } catch (error) {
     console.error('后台下载歌曲失败:', error.message);
