@@ -20,9 +20,9 @@ app.use(express.static('public'));
 app.use('/storage', express.static(storageUtils.STORAGE_DIR));
 
 // 获取本地库列表
-app.get('/api/local/library', (req, res) => {
+app.get('/api/local/library', async (req, res) => {
   try {
-    const library = storageUtils.scanLibrary();
+    const library = await storageUtils.scanLibrary();
     res.json({
       code: 200,
       data: library

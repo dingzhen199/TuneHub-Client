@@ -716,18 +716,6 @@ button:active {
     transform: scale(1.2);
 }
 
-.scrolling-lyrics {
-    height: 20px;
-    font-size: 0.9em;
-    color: var(--primary-color);
-    text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    width: 100%;
-    margin-top: 2px;
-    font-weight: 500;
-}
 
 .player-right {
     display: flex;

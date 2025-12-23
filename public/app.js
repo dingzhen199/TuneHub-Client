@@ -563,7 +563,6 @@ const closeLyricsBtn = document.getElementById('close-lyrics-btn');
 const progressBar = document.getElementById('progress-bar');
 const currentTimeDisplay = document.getElementById('current-time');
 const totalDurationDisplay = document.getElementById('total-duration');
-const scrollingLyrics = document.getElementById('scrolling-lyrics');
 
 let isDraggingProgress = false;
 
@@ -625,7 +624,8 @@ const fsLyricsContainer = document.getElementById('fs-lyrics-container');
 if (playerCover) {
     playerCover.addEventListener('click', () => {
         if (currentSong.id) {
-            openFullScreenLyrics();
+            // 打开歌词面板
+            playerLyricsPanel.classList.add('show');
         }
     });
 }
@@ -1484,19 +1484,11 @@ function updateLyricsHighlight(currentTime) {
                     if (playerLyricsPanel.classList.contains('show')) {
                         scrollToActiveLyric(line, playerLyricsPanel);
                     }
-                    
-                    // 更新滚动歌词
-                    if (scrollingLyrics) {
-                        scrollingLyrics.textContent = line.textContent;
-                    }
                 }
             } else {
                 line.classList.remove('active');
             }
         });
-    } else if (scrollingLyrics && activeIndex >= 0 && lyricsData[activeIndex]) {
-        // 如果没有打开歌词面板，也要更新滚动歌词
-        scrollingLyrics.textContent = lyricsData[activeIndex].text;
     }
     
     // 更新全屏歌词高亮
