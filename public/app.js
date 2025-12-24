@@ -1241,13 +1241,31 @@ async function playLocalSong(id, name, artist, relativePath) {
 
 // 播放歌曲（从搜索结果、歌单、排行榜调用）
 async function playSong(platform, id, name, artist) {
-    // 如果是本地歌曲，调用 playLocalSong
+    // 1. 优先检查是否是本地歌曲（通过平台标识或 ID 格式）
+    const isLocal = platform === 'local' || (id && id.toString().startsWith('local_'));
+    
+    // 2. 检查队列中是否已有该歌曲的本地路径
     const queuedSong = playQueue.find(s => s.platform === platform && s.id === id);
-    if (queuedSong && queuedSong.platform === 'local' && queuedSong.path) {
+    if (queuedSong && queuedSong.path) {
         playLocalSong(id, name, artist, queuedSong.path);
         return;
     }
+
+    // 3. 处理本地平台歌曲
+    if (isLocal) {
+        // 尝试从本地库中查找
+        const librarySong = localLibrarySongs.find(s => s.id === id);
+        if (librarySong && librarySong.path) {
+            playLocalSong(id, name, artist, librarySong.path);
+            return;
+        }
+        
+        console.error('无法播放本地歌曲：未找到文件路径', id);
+        alert('无法播放该本地歌曲：未找到文件路径');
+        return;
+    }
     
+    // 4. 处理在线歌曲
     currentSong = { platform, id, name, artist };
     
     // 更新队列索引

@@ -101,7 +101,7 @@ async function ensureSongCached(source, artist, album, songName, quality, audioU
         }
 
         if (attempt > 0) {
-          console.log(`正在重试下载 (${attempt}/${retryCount}): ${songName}`);
+          console.error(`正在重试下载 (${attempt}/${retryCount}): ${songName} (${artist})`);
           if (onProgress) onProgress({ status: 'downloading', progress: 0, message: `正在重试 (${attempt}/${retryCount})...` });
           // 指数退避等待
           await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
@@ -145,7 +145,7 @@ async function ensureSongCached(source, artist, album, songName, quality, audioU
         
       } catch (error) {
         lastError = error;
-        console.error(`下载尝试 ${attempt + 1} 失败:`, error.message);
+        console.error(`下载尝试 ${attempt + 1} 失败 [${songName} - ${artist}]:`, error.message);
         
         // 清理临时文件以便下次重试
         if (fs.existsSync(tempPath)) {
@@ -209,7 +209,7 @@ async function downloadAndSaveCover(source, artist, album, songName, coverUrl) {
     
     return filePath;
   } catch (error) {
-    console.error('下载专辑封面失败:', error.message);
+    console.error(`下载专辑封面失败 [${songName} - ${artist}]:`, error.message);
     const filePath = getCoverStoragePath(source, artist, album, songName);
     const tempPath = `${filePath}.tmp`;
     if (fs.existsSync(tempPath)) {
@@ -234,7 +234,7 @@ function saveLyrics(source, artist, album, songName, lyricsText) {
     
     return filePath;
   } catch (error) {
-    console.error('保存歌词文件失败:', error.message);
+    console.error(`保存歌词文件失败 [${songName} - ${artist}]:`, error.message);
     throw error;
   }
 }
@@ -337,11 +337,18 @@ async function scanLibrary() {
 
 // 流式代理并保存歌曲（边下边播）- 已废弃，仅保留流式代理功能
 async function streamAndSaveSong(req, res, audioUrl, filePath) {
+  if (!audioUrl) {
+    console.error('流式代理失败: audioUrl 为空');
+    return res.status(400).send('Audio URL is required');
+  }
+
   // 1. 检查 Range 请求
   const range = req.headers.range;
   
   // 2. 请求上游音频流
-  const headers = {};
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+  };
   if (range) headers['Range'] = range;
   
   try {
@@ -350,6 +357,7 @@ async function streamAndSaveSong(req, res, audioUrl, filePath) {
       url: audioUrl,
       responseType: 'stream',
       headers: headers,
+      timeout: 30000, // 30秒连接超时
       // 允许 200 和 206 (Partial Content)
       validateStatus: status => (status >= 200 && status < 300) || status === 206
     });
@@ -363,14 +371,32 @@ async function streamAndSaveSong(req, res, audioUrl, filePath) {
     });
     
     // 4. 管道传输给客户端
-    response.data.pipe(res);
+    const stream = response.data;
+    
+    // 监听客户端断开连接
+    req.on('close', () => {
+      if (stream && !stream.destroyed) {
+        stream.destroy();
+      }
+    });
+
+    stream.on('error', (err) => {
+      console.error('上游流读取出错:', err.message);
+      if (!res.headersSent) {
+        res.status(500).send('Upstream stream error');
+      }
+      stream.destroy();
+    });
+
+    stream.pipe(res);
     
     // 注意：不再在此处保存文件，而是由 ensureSongCached 在后台处理
     
   } catch (error) {
-    console.error('流式代理出错:', error.message);
+    console.error('流式代理请求出错:', error.message);
     if (!res.headersSent) {
-      res.status(500).send('Stream error');
+      const status = error.response ? error.response.status : 500;
+      res.status(status).send(error.message || 'Stream request error');
     }
   }
 }

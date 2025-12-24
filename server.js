@@ -14,6 +14,10 @@ function updateDownloadTask(id, data) {
   const task = downloadTasks.get(id) || { id, startTime: Date.now() };
   downloadTasks.set(id, { ...task, ...data, lastUpdate: Date.now() });
   
+  if (data.status === 'failed') {
+    console.error(`[下载失败] 任务ID: ${id}, 歌曲: ${data.name || task.name || '未知'} - ${data.artist || task.artist || '未知'}, 原因: ${data.error || '未知错误'}`);
+  }
+
   // 10分钟后清理已完成或失败的任务
   if (data.status === 'completed' || data.status === 'failed') {
     setTimeout(() => downloadTasks.delete(id), 10 * 60 * 1000);
@@ -62,11 +66,15 @@ app.get('/api/local/library', async (req, res) => {
 app.get('/api/proxy/info', async (req, res) => {
   try {
     const { source, id } = req.query;
+    if (!source || !id) {
+      return res.status(400).json({ code: 400, message: '缺少必要参数: source, id', data: null });
+    }
     const response = await axios.get(`${API_BASE_URL}/api/`, {
       params: { source, id, type: 'info' }
     });
     res.json(response.data);
   } catch (error) {
+    console.error(`[INFO代理失败] source=${req.query.source}, id=${req.query.id}, error:`, error.message);
     res.status(500).json({ 
       code: 500, 
       message: error.message,
@@ -78,6 +86,9 @@ app.get('/api/proxy/info', async (req, res) => {
 app.get('/api/proxy/url', async (req, res) => {
   try {
     const { source, id, br } = req.query;
+    if (!source || !id) {
+      return res.status(400).json({ code: 400, message: '缺少必要参数: source, id', data: null });
+    }
     const quality = br || '320k';
     
     // 先获取歌曲信息（用于构建存储路径）
@@ -95,15 +106,20 @@ app.get('/api/proxy/url', async (req, res) => {
     
     // 如果获取到歌曲信息，检查本地缓存
     if (songInfo) {
-      const localPath = storageUtils.getLocalSongPath(
-        source, 
-        songInfo.artist || '未知歌手', 
-        songInfo.album || '未知专辑', 
-        songInfo.name || '未知歌曲', 
-        quality
-      );
-      if (localPath) {
-        return res.sendFile(localPath);
+      try {
+        const localPath = storageUtils.getLocalSongPath(
+          source, 
+          songInfo.artist || '未知歌手', 
+          songInfo.album || '未知专辑', 
+          songInfo.name || '未知歌曲', 
+          quality
+        );
+        if (localPath) {
+          console.log(`[本地缓存命中] ${songInfo.name} - ${songInfo.artist}`);
+          return res.sendFile(localPath);
+        }
+      } catch (err) {
+        console.error('[本地缓存检查失败]:', err.message);
       }
     }
     
@@ -119,6 +135,9 @@ app.get('/api/proxy/url', async (req, res) => {
     
     if (response.status === 302 || response.status === 301) {
       const location = response.headers.location;
+      if (!location) {
+        throw new Error('API 返回了重定向但没有 Location 标头');
+      }
       const sourceSwitch = response.headers['x-source-switch'];
       
       if (sourceSwitch) {
@@ -151,65 +170,75 @@ app.get('/api/proxy/url', async (req, res) => {
       
       // 流式代理
       await storageUtils.streamAndSaveSong(req, res, location, null);
-    } else {
+    } else if (response.data && response.data.code === 200) {
       res.json(response.data);
+    } else {
+      throw new Error(response.data?.message || `API 返回错误状态码: ${response.status}`);
     }
   } catch (error) {
+    console.error(`[URL代理失败] source=${req.query.source}, id=${req.query.id}, error:`, error.message);
+    
+    // 检查是否是 axios 抛出的 301/302 错误（尽管设置了 validateStatus，作为兜底）
     if (error.response && (error.response.status === 302 || error.response.status === 301)) {
       const location = error.response.headers.location;
-      const sourceSwitch = error.response.headers['x-source-switch'];
-      const quality = req.query.br || '320k';
-      
-      if (sourceSwitch) {
-        res.set('X-Source-Switch', sourceSwitch);
-      }
-      
-      // 尝试获取歌曲信息并触发后台下载
-      try {
-        const infoResponse = await axios.get(`${API_BASE_URL}/api/`, {
-          params: { source: req.query.source, id: req.query.id, type: 'info' }
-        });
-        if (infoResponse.data && infoResponse.data.code === 200 && infoResponse.data.data) {
-          const songInfo = infoResponse.data.data;
-          const taskId = `${req.query.source}_${req.query.id}_${quality}`;
-          updateDownloadTask(taskId, { 
-            name: songInfo.name, 
-            artist: songInfo.artist, 
-            status: 'pending', 
-            progress: 0 
-          });
-
-          storageUtils.ensureSongCached(
-            req.query.source, 
-            songInfo.artist || '未知歌手', 
-            songInfo.album || '未知专辑', 
-            songInfo.name || '未知歌曲', 
-            quality,
-            location,
-            (progressData) => updateDownloadTask(taskId, progressData)
-          ).catch(err => {
-            console.error('后台下载触发失败:', err.message);
-            updateDownloadTask(taskId, { status: 'failed', error: err.message });
-          });
+      if (location) {
+        const sourceSwitch = error.response.headers['x-source-switch'];
+        const quality = req.query.br || '320k';
+        
+        if (sourceSwitch) {
+          res.set('X-Source-Switch', sourceSwitch);
         }
-      } catch (err) {
-        console.error('获取歌曲信息失败:', err.message);
+        
+        // 尝试获取歌曲信息并触发后台下载
+        try {
+          const infoResponse = await axios.get(`${API_BASE_URL}/api/`, {
+            params: { source: req.query.source, id: req.query.id, type: 'info' }
+          });
+          if (infoResponse.data && infoResponse.data.code === 200 && infoResponse.data.data) {
+            const songInfo = infoResponse.data.data;
+            const taskId = `${req.query.source}_${req.query.id}_${quality}`;
+            updateDownloadTask(taskId, { 
+              name: songInfo.name, 
+              artist: songInfo.artist, 
+              status: 'pending', 
+              progress: 0 
+            });
+
+            storageUtils.ensureSongCached(
+              req.query.source, 
+              songInfo.artist || '未知歌手', 
+              songInfo.album || '未知专辑', 
+              songInfo.name || '未知歌曲', 
+              quality,
+              location,
+              (progressData) => updateDownloadTask(taskId, progressData)
+            ).catch(err => {
+              console.error('后台下载触发失败:', err.message);
+              updateDownloadTask(taskId, { status: 'failed', error: err.message });
+            });
+          }
+        } catch (err) {
+          console.error('获取歌曲信息失败:', err.message);
+        }
+        
+        return await storageUtils.streamAndSaveSong(req, res, location, null);
       }
-      
-      await storageUtils.streamAndSaveSong(req, res, location, null);
-    } else {
-      res.status(500).json({ 
-        code: 500, 
-        message: error.message,
-        data: null 
-      });
     }
+    
+    res.status(500).json({ 
+      code: 500, 
+      message: error.message || '服务器内部错误',
+      data: null 
+    });
   }
 });
 
 app.get('/api/proxy/pic', async (req, res) => {
   try {
     const { source, id } = req.query;
+    if (!source || !id) {
+      return res.status(400).json({ code: 400, message: '缺少必要参数: source, id', data: null });
+    }
     
     // 先获取歌曲信息（用于构建存储路径和检查本地缓存）
     let songInfo = null;
@@ -317,6 +346,9 @@ app.get('/api/proxy/pic', async (req, res) => {
 app.get('/api/proxy/lrc', async (req, res) => {
   try {
     const { source, id } = req.query;
+    if (!source || !id) {
+      return res.status(400).json({ code: 400, message: '缺少必要参数: source, id', data: null });
+    }
     
     // 先获取歌曲信息（用于构建存储路径）
     let songInfo = null;
@@ -838,6 +870,7 @@ app.post('/api/playlist/save-all', async (req, res) => {
             throw new Error('获取歌曲信息失败');
           }
         } catch (error) {
+          console.error(`[批量保存失败] 歌曲: ${song.name || '未知'} (ID: ${song.id}), 原因:`, error.message);
           results.failed++;
           results.details.push({ 
             id: song.id, 
